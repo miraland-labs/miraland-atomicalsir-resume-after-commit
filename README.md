@@ -50,7 +50,7 @@ Options:
       --commit-time <COMMIT_TIMESTAMP>
           Previous commit payload unix timestamp
 
-      --commit-time <COMMIT_NONCE>
+      --commit-nonce <COMMIT_NONCE>
           Previous commit payload nonce
 
       --commit-txid <COMMIT_TXID>
@@ -68,6 +68,14 @@ Options:
   -V, --version
           Print version
 ```
+
+## Where to find above argument values?
+
+--commit-time, --commit-nonce, --commit-txid please see console output
+--commit-scriptpk, --commit-refund can be found by searching your txid at https://mempool.space, please see screenshot below
+### ATTENTION: --commit-refund is in sats, so you need multiply the btc amount by 100,000,000
+
+![Find commit tx in mempool space](/assets/images/tx-detail.png "Transaction Detail")
 
 ### Warning
 The Rust mining engine is not fully tested; use at your own risk.

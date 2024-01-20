@@ -1,6 +1,5 @@
 // std
 use std::{
-	ops::Range,
 	path::Path,
 	str::FromStr,
 	sync::{
@@ -15,14 +14,13 @@ use bitcoin::{
 	absolute::LockTime,
 	consensus::encode,
 	hashes::Hash,
-	key::TapTweak,
 	psbt::Input,
 	secp256k1::{All, Keypair, Message, Secp256k1, XOnlyPublicKey},
 	sighash::{Prevouts, SighashCache},
 	taproot::{LeafVersion, Signature, TaprootBuilder, TaprootSpendInfo},
 	transaction::Version,
 	Address, Amount, Network, OutPoint, Psbt, ScriptBuf, Sequence, TapSighashType, Transaction,
-	TxIn, TxOut, Witness,
+	TxIn, TxOut, Witness, Txid,
 };
 use serde::Serialize;
 // atomicalsir
@@ -39,16 +37,21 @@ pub async fn run(
 	wallet_dir: &Path,
 	ticker: &str,
 	max_fee: u64,
+	commit_time: u64,
+	commit_nonce: u64,
+	commit_txid: &str,
+	commit_scriptpk: &str,
+	commit_refund: u64,
 ) -> Result<()> {
-	let m = MinerBuilder { network, electrumx, wallet_dir, ticker, max_fee }.build()?;
+	let m = MinerBuilder { network, electrumx, wallet_dir, ticker, max_fee, commit_time, commit_nonce, commit_txid, commit_scriptpk, commit_refund }.build()?;
 
 	#[allow(clippy::never_loop)]
 	loop {
 		for w in &m.wallets {
 			m.mine(w).await?;
 
-			// Test only.
-			// return Ok(());
+			// Once resume-after-commit succeeds, return immediately.
+			return Ok(());
 		}
 	}
 }
@@ -60,6 +63,11 @@ struct Miner {
 	wallets: Vec<Wallet>,
 	ticker: String,
 	max_fee: u64,
+	commit_time: u64,
+	commit_nonce: u64,
+	commit_txid: String,
+	commit_scriptpk: String,
+	commit_refund: u64,
 }
 impl Miner {
 	const BASE_BYTES: f64 = 10.5;
@@ -81,20 +89,16 @@ impl Miner {
 
 		let d = self.prepare_data(wallet).await?;
 
-		tracing::info!("attempt to find a solution based on {d:#?}");
-		tracing::info!("\nStarting commit stage mining now...\n");
-		tracing::info!("Concurrency set to: {concurrency}");
-
 		let Data {
 			secp,
-			satsbyte,
-			bitworkc,
+			satsbyte: _,
+			bitworkc: _,
 			bitworkr,
 			additional_outputs,
 			reveal_script,
 			reveal_spend_info,
 			fees,
-			funding_utxo,
+			funding_utxo: _,
 		} = d.clone();
 		let reveal_spk = ScriptBuf::new_p2tr(
 			&secp,
@@ -102,19 +106,13 @@ impl Miner {
 			reveal_spend_info.merkle_root(),
 		);
 		let funding_spk = wallet.funding.address.script_pubkey();
-		let commit_input = vec![TxIn {
-			previous_output: OutPoint::new(funding_utxo.txid.parse()?, funding_utxo.vout),
-			..Default::default()
-		}];
 		let commit_output = {
 			let spend = TxOut {
 				value: Amount::from_sat(fees.reveal_and_outputs),
 				script_pubkey: reveal_spk.clone(),
 			};
 			let refund = {
-				let r = funding_utxo.value.saturating_sub(fees.reveal_and_outputs).saturating_sub(
-					fees.commit + (Self::OUTPUT_BYTES_BASE * satsbyte as f64).floor() as u64,
-				);
+				let r = self.commit_refund;
 
 				if r > 0 {
 					Some(TxOut { value: Amount::from_sat(r), script_pubkey: funding_spk.clone() })
@@ -129,142 +127,6 @@ impl Miner {
 				vec![spend]
 			}
 		};
-		let commit_prevouts = [TxOut {
-			value: Amount::from_sat(funding_utxo.value),
-			script_pubkey: funding_spk.clone(),
-		}];
-		let commit_hty = TapSighashType::Default;
-		let mut ts = <Vec<JoinHandle<Result<()>>>>::new();
-		let solution_found = Arc::new(AtomicBool::new(false));
-		let maybe_commit_tx = Arc::new(Mutex::new(None));
-
-		Self::sequence_ranges().into_iter().enumerate().for_each(|(i, r)| {
-			tracing::info!("spawning commit worker thread {i} for sequence range {r:?}");
-
-			let secp = secp.clone();
-			let bitworkc = bitworkc.clone();
-			let funding_kp = wallet.funding.pair.tap_tweak(&secp, None).to_inner();
-			let funding_xpk = wallet.funding.x_only_public_key;
-			let input = commit_input.clone();
-			let output = commit_output.clone();
-			let prevouts = commit_prevouts.clone();
-			let solution_found = solution_found.clone();
-			let maybe_tx = maybe_commit_tx.clone();
-
-			ts.push(thread::spawn(move || {
-				for s in r {
-					if solution_found.load(Ordering::Relaxed) {
-						return Ok(());
-					}
-
-					let mut psbt = Psbt::from_unsigned_tx(Transaction {
-						version: Version::ONE,
-						lock_time: LockTime::ZERO,
-						input: {
-							let mut i = input.clone();
-
-							i[0].sequence = Sequence(s);
-
-							i
-						},
-						output: output.clone(),
-					})?;
-					let tap_key_sig = {
-						let h = SighashCache::new(&psbt.unsigned_tx)
-							.taproot_key_spend_signature_hash(
-								0,
-								&Prevouts::All(&prevouts),
-								commit_hty,
-							)?;
-						let m = Message::from_digest(h.to_byte_array());
-
-						Signature { sig: secp.sign_schnorr(&m, &funding_kp), hash_ty: commit_hty }
-					};
-
-					psbt.inputs[0] = Input {
-						witness_utxo: Some(prevouts[0].clone()),
-						final_script_witness: {
-							let mut w = Witness::new();
-
-							w.push(tap_key_sig.to_vec());
-
-							Some(w)
-						},
-						tap_key_sig: Some(tap_key_sig),
-						tap_internal_key: Some(funding_xpk),
-						..Default::default()
-					};
-
-					tracing::trace!("{psbt:#?}");
-
-					let tx = psbt.extract_tx_unchecked_fee_rate();
-					let txid = tx.txid();
-
-					if txid.to_string().trim_start_matches("0x").starts_with(&bitworkc) {
-						tracing::info!("solution found for commit step");
-						tracing::info!("commit sequence {s}");
-						tracing::info!("commit txid {txid}");
-						tracing::info!("commit tx {tx:#?}");
-
-						solution_found.store(true, Ordering::Relaxed);
-						*maybe_tx.lock().unwrap() = Some(tx);
-
-						return Ok(());
-					}
-				}
-
-				Ok(())
-			}));
-		});
-
-		tracing::info!("\nStay calm and grab a drink! Commit workers have started mining...\n");
-		for t in ts {
-			t.join().unwrap()?;
-		}
-
-		// TODO: If no solution found.
-		let commit_tx = maybe_commit_tx.lock().unwrap().take().unwrap();
-
-		let commit_txid = commit_tx.txid();
-		// tracing::info!("commit txid {}", commit_txid);
-		tracing::info!("Broadcasting commit tx...");
-		let raw_tx = encode::serialize_hex(&commit_tx);
-		tracing::info!("raw tx: {}", &raw_tx);
-
-		let mut attempts = 0;
-		while attempts < Self::MAX_BROADCAST_NUM {
-			if let Err(_) = self.api.broadcast(raw_tx.clone()).await {
-				tracing::info!(
-					"Network error, will retry to broadcast commit transaction in {} seconds...",
-					Self::BROADCAST_SLEEP_SECONDS
-				);
-				sleep(Duration::from_secs(15));
-				attempts += 1;
-				continue;
-			}
-			break;
-		}
-
-		if attempts < Self::MAX_BROADCAST_NUM {
-			tracing::info!("Successfully sent commit tx {commit_txid}");
-		} else {
-			tracing::info!("❌ Failed to send commit tx {commit_txid}");
-			return Ok(());
-		}
-
-		tracing::info!("\nCommit workers have completed their tasks for the commit transaction.\n");
-
-		let commit_txid = commit_tx.txid();
-		let commit_txid_ = self
-			.api
-			.wait_until_utxo(
-				Address::from_script(&reveal_spk, self.network)?.to_string(),
-				fees.reveal_and_outputs,
-			)
-			.await?
-			.txid;
-
-		assert_eq!(commit_txid, commit_txid_.parse()?);
 
 		// TODO: Move common code to a single function.
 		let reveal_hty = TapSighashType::SinglePlusAnyoneCanPay;
@@ -277,7 +139,7 @@ impl Miner {
 				version: Version::ONE,
 				lock_time: LockTime::ZERO,
 				input: vec![TxIn {
-					previous_output: OutPoint::new(commit_txid, 0),
+					previous_output: OutPoint::new(self.commit_txid.clone().parse::<Txid>()?, 0),
 					sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
 					..Default::default()
 				}],
@@ -430,7 +292,7 @@ impl Miner {
 				version: Version::ONE,
 				lock_time: LockTime::ZERO,
 				input: vec![TxIn {
-					previous_output: OutPoint::new(commit_txid, 0),
+					previous_output: OutPoint::new(self.commit_txid.clone().parse()?, 0),
 					sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
 					..Default::default()
 				}],
@@ -536,27 +398,52 @@ impl Miner {
 			value: Amount::from_sat(ft.mint_amount),
 			script_pubkey: wallet.stash.address.script_pubkey(),
 		}];
-		let payload = PayloadWrapper {
-			args: {
-				let (time, nonce) = util::time_nonce();
-				tracing::info!("payload time: {time}, payload nonce: {nonce}");
 
-				Payload {
-					bitworkc: ft.mint_bitworkc.clone(),
-					mint_ticker: ft.ticker.clone(),
-					nonce,
-					time,
-				}
-			},
-		};
-		let payload_encoded = util::cbor(&payload)?;
-		// TODO: More op types.
-		let reveal_script =
-			util::build_reval_script(&wallet.funding.x_only_public_key, "dmt", &payload_encoded);
-		let reveal_spend_info = TaprootBuilder::new()
-			.add_leaf(0, reveal_script.clone())?
-			.finalize(&secp, wallet.funding.x_only_public_key)
-			.unwrap();
+		let reveal_script: ScriptBuf;
+		let reveal_spend_info: TaprootSpendInfo;
+
+		// loop is for future purpose only.
+		// let mut nonce: u64 = 10_000_000;
+		let nonce: u64;
+		loop {
+			let payload = PayloadWrapper {
+				args: {
+					let time: u64 = self.commit_time;
+					// nonce -= 1;
+					nonce = self.commit_nonce;
+
+					tracing::info!("input commit payload time: {time}, input commit payload nonce: {nonce}");
+
+					Payload {
+						bitworkc: ft.mint_bitworkc.clone(),
+						mint_ticker: ft.ticker.clone(),
+						nonce,
+						time,
+					}
+				},
+			};
+			let payload_encoded = util::cbor(&payload)?;
+			let reveal_script_ =
+				util::build_reval_script(&wallet.funding.x_only_public_key, "dmt", &payload_encoded);
+			let reveal_spend_info_ = TaprootBuilder::new()
+				.add_leaf(0, reveal_script_.clone())?
+				.finalize(&secp, wallet.funding.x_only_public_key)
+				.unwrap();
+			let reveal_spk = ScriptBuf::new_p2tr(
+				&secp,
+				reveal_spend_info_.internal_key(),
+				reveal_spend_info_.merkle_root(),
+			);
+
+			assert_eq!(reveal_spk.to_hex_string(), self.commit_scriptpk.clone(), "we are expecting both values are same.");
+
+			tracing::info!("The previous commit verified successfully with time: {}, nonce: {}", payload.args.time, payload.args.nonce);
+			reveal_script = reveal_script_;
+			reveal_spend_info = reveal_spend_info_;
+
+			break ();
+		}
+
 		let perform_bitworkr = if ft.mint_bitworkr.is_some() { true } else { false };
 		let fees = Self::fees_of(
 			satsbyte,
@@ -618,14 +505,6 @@ impl Miner {
 		let commit_and_reveal = commit + reveal;
 		let commit_and_reveal_and_outputs = commit_and_reveal + outputs;
 
-		// While satsbyte at `150`.
-		// Fees {
-		// 	commit: 16650,
-		// 	commit_and_reveal: 38700,
-		// 	commit_and_reveal_and_outputs: 58700,
-		// 	reveal: 22050,
-		// 	reveal_and_outputs: 42050,
-		// };
 		Fees {
 			commit,
 			// commit_and_reveal,
@@ -633,23 +512,6 @@ impl Miner {
 			// reveal,
 			reveal_and_outputs: reveal + outputs,
 		}
-	}
-
-	fn sequence_ranges() -> Vec<Range<u32>> {
-		let concurrency: u32 = num_cpus::get() as u32;
-		let step = (Sequence::MAX.0 as f64 / concurrency as f64).ceil() as u32;
-		let mut ranges = Vec::new();
-		let mut start = 0;
-
-		while start < Sequence::MAX.0 {
-			let end = start.checked_add(step).unwrap_or(Sequence::MAX.0);
-
-			ranges.push(start..end);
-
-			start = end;
-		}
-
-		ranges
 	}
 }
 #[derive(Debug)]
@@ -659,6 +521,11 @@ struct MinerBuilder<'a> {
 	wallet_dir: &'a Path,
 	ticker: &'a str,
 	max_fee: u64,
+	commit_time: u64,
+	commit_nonce: u64,
+	commit_txid: &'a str,
+	commit_scriptpk: &'a str,
+	commit_refund: u64,
 }
 impl<'a> MinerBuilder<'a> {
 	fn build(self) -> Result<Miner> {
@@ -675,6 +542,11 @@ impl<'a> MinerBuilder<'a> {
 			wallets,
 			ticker: self.ticker.into(),
 			max_fee: self.max_fee,
+			commit_time: self.commit_time,
+			commit_nonce: self.commit_nonce,
+			commit_txid: self.commit_txid.into(),
+			commit_scriptpk: self.commit_scriptpk.into(),
+			commit_refund: self.commit_refund,
 		})
 	}
 }
@@ -725,6 +597,7 @@ pub struct Payload {
 	pub time: u64,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 struct Data {
 	secp: Secp256k1<All>,
@@ -737,6 +610,7 @@ struct Data {
 	fees: Fees,
 	funding_utxo: Utxo,
 }
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 struct Fees {
 	commit: u64,

@@ -87,28 +87,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6f840fb7195bcfc5e17ea40c26e5ce6d5b9ce5d584466e17703209657e459ae0"
 
 [[package]]
-name = "atomicalsir"
-version = "0.1.9"
-dependencies = [
- "anyhow",
- "array-bytes",
- "bitcoin",
- "ciborium",
- "clap",
- "color-eyre",
- "num_cpus",
- "rand",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "vergen",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -783,6 +761,27 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "miraland-atomicalsir-resume-after-commit"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "array-bytes",
+ "bitcoin",
+ "ciborium",
+ "clap",
+ "color-eyre",
+ "num_cpus",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "vergen",
 ]
 
 [[package]]

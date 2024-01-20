@@ -1,21 +1,15 @@
 <div align="center">
 
-# atomicalsir
-### Atomicals mining manager.
-[![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Checks](https://github.com/hack-ink/atomicalsir/actions/workflows/checks.yml/badge.svg?branch=main)](https://github.com/hack-ink/atomicalsir/actions/workflows/checks.yml)
-[![Release](https://github.com/hack-ink/atomicalsir/actions/workflows/release.yml/badge.svg)](https://github.com/hack-ink/atomicalsir/actions/workflows/release.yml)
-[![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/hack-ink/atomicalsir)](https://github.com/hack-ink/atomicalsir/tags)
-[![GitHub code lines](https://tokei.rs/b1/github/hack-ink/atomicalsir)](https://github.com/hack-ink/atomicalsir)
-[![GitHub last commit](https://img.shields.io/github/last-commit/hack-ink/atomicalsir?color=red&style=plastic)](https://github.com/hack-ink/atomicalsir)
+# # DISCLAIMER AND TERMS
+The product is provided 'AS IS', without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose and non-infringement. In no event shall the creators, authors or copyright holders be liable for any claim, damages or other liability, whether in an action of contract, tort or otherwise, arising from, out of or in connection with The Product or the use or other dealings in The Product. The Product does not represent any investment, security, financial instrument, redemption, promise, bearer instrument or commitment of any kind. The Product is intended only for educational and experimentation purposes only and is not backed or supported by any individual or team. There are no future prospects or plans of any kind beyond the educational and experimentation usages of The Product. Any use or interaction with The Product is expressly prohibited unless your jurisdiction and circumstances explicitly permits the use and interaction with The Product. Any interaction with The Product constitutes acceptance of these terms and the user accepts all responsibility and all risks associated with the use and interaction with The Product.
 
 </div>
 
 ## Usage
 ```
-Atomicals mining manager.
+Miraland Atomicalsir Tool for Resuming after Commit Succeeded but Reveal Failed (based on atomicalsir)
 
-Usage: atomicalsir [OPTIONS] --ticker <NAME> <--rust-engine <RUST_ENGINE>|--js-engine <PATH>>
+Usage: miraland-atomicalsir-resume-after-commit [OPTIONS] --ticker <NAME> <--rust-engine <RUST_ENGINE>|--js-engine <PATH>> --commit-time <COMMIT_TIMESTAMP> --commit-nonce <COMMIT_NONCE> --commit-txid <COMMIT_TXID> --commit-scriptpk <COMMIT_SCRIPT_PUBKEY> --commit-refund <COMMIT_REFUND_SATS>
 
 Options:
       --rust-engine <RUST_ENGINE>
@@ -52,6 +46,21 @@ Options:
       --ticker <NAME>
           Ticker of the network to mine on
 
+      --commit-time <COMMIT_TIMESTAMP>
+          Previous commit payload unix timestamp
+
+      --commit-time <COMMIT_NONCE>
+          Previous commit payload nonce
+
+      --commit-txid <COMMIT_TXID>
+          Previous commit transaction id
+
+      --commit-scriptpk <COMMIT_SCRIPT_PUBKEY>
+          Previous commit tx first output script pubkey
+
+      --commit-refund <COMMIT_REFUND>
+          Previous commit output refund(in sats, 1 btc = 100,000,000 sats)
+
   -h, --help
           Print help (see a summary with '-h')
 
@@ -61,7 +70,6 @@ Options:
 
 ### Warning
 The Rust mining engine is not fully tested; use at your own risk.
-Additionally, it does not support `bitworkr`.
 
 #### Example
 ```sh

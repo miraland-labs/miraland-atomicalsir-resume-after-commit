@@ -1,7 +1,7 @@
 // std
 use std::{
 	future::Future,
-	time::{Duration, SystemTime, UNIX_EPOCH},
+	time::Duration,
 };
 // crates.io
 use bitcoin::{
@@ -13,7 +13,6 @@ use bitcoin::{
 	secp256k1::Keypair,
 	Address, PrivateKey, Script, ScriptBuf, XOnlyPublicKey,
 };
-use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::time;
@@ -57,13 +56,6 @@ pub fn kill_process(pid: u32) -> Result<()> {
 	std::process::Command::new("taskkill").args(["/F", "/PID", &pid.to_string()]).output()?;
 
 	Ok(())
-}
-
-pub fn time_nonce() -> (u64, u64) {
-	(
-		SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
-		rand::thread_rng().gen_range(1..10_000_000),
-	)
 }
 
 pub fn cbor<T>(v: &T) -> Result<Vec<u8>>

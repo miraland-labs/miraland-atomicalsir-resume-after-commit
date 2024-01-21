@@ -72,19 +72,22 @@ pub struct Cli {
 	/// Previous commit tx first output script pub key.
 	#[arg(long, value_name = "COMMIT_SCRIPT_PUBKEY")]
 	commit_scriptpk: String,
+	/// Previous commit output spend(in sats, 1 btc = 100,000,000 sats).
+	#[arg(long, value_name = "COMMIT_SPEND")]
+	commit_spend: u64,
 	/// Previous commit output refund(in sats, 1 btc = 100,000,000 sats).
 	#[arg(long, value_name = "COMMIT_REFUND")]
 	commit_refund: u64,
 }
 impl Cli {
 	pub async fn run(self) -> Result<()> {
-		let Cli { rust_engine, js_engine, network, max_fee, electrumx, ticker, commit_time, commit_nonce, commit_txid, commit_scriptpk, commit_refund } = self;
+		let Cli { rust_engine, js_engine, network, max_fee, electrumx, ticker, commit_time, commit_nonce, commit_txid, commit_scriptpk, commit_spend, commit_refund } = self;
 		let ticker = ticker.to_lowercase();
 
 		if let Some(d) = js_engine {
 			js::run(network.as_atomical_js_network(), &electrumx, &d, &ticker, max_fee).await?;
 		} else if let Some(d) = rust_engine {
-			rust::run(network.into(), &electrumx, &d, &ticker, max_fee, commit_time, commit_nonce, &commit_txid, &commit_scriptpk, commit_refund).await?;
+			rust::run(network.into(), &electrumx, &d, &ticker, max_fee, commit_time, commit_nonce, &commit_txid, &commit_scriptpk, commit_spend, commit_refund).await?;
 		}
 
 		Ok(())

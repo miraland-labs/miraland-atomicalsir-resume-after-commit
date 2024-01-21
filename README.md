@@ -12,7 +12,7 @@
 ```
 Miraland Atomicalsir Tool for Resuming after Commit Succeeded but Reveal Failed (based on atomicalsir)
 
-Usage: miraland-atomicalsir-resume-after-commit [OPTIONS] --ticker <NAME> <--rust-engine <RUST_ENGINE>|--js-engine <PATH>> --commit-time <COMMIT_TIMESTAMP> --commit-nonce <COMMIT_NONCE> --commit-txid <COMMIT_TXID> --commit-scriptpk <COMMIT_SCRIPT_PUBKEY> --commit-refund <COMMIT_REFUND_SATS>
+Usage: miraland-atomicalsir-resume-after-commit [OPTIONS] --ticker <NAME> <--rust-engine <RUST_ENGINE>|--js-engine <PATH>> --commit-time <COMMIT_TIMESTAMP> --commit-nonce <COMMIT_NONCE> --commit-txid <COMMIT_TXID> --commit-scriptpk <COMMIT_SCRIPT_PUBKEY> --commit-spend <COMMIT_SPEND_SATS> --commit-refund <COMMIT_REFUND_SATS>
 
 Options:
       --rust-engine <RUST_ENGINE>
@@ -61,6 +61,9 @@ Options:
       --commit-scriptpk <COMMIT_SCRIPT_PUBKEY>
           Previous commit tx first output script pubkey
 
+      --commit-spend <COMMIT_SPEND>
+          Previous commit output spend(in sats, 1 btc = 100,000,000 sats)
+
       --commit-refund <COMMIT_REFUND>
           Previous commit output refund(in sats, 1 btc = 100,000,000 sats)
 
@@ -74,10 +77,14 @@ Options:
 ## Where to find above argument values?
 
 --commit-time, --commit-nonce, --commit-txid please see console output
---commit-scriptpk, --commit-refund can be found by searching your txid at https://mempool.space, please see screenshot below
-### ATTENTION: --commit-refund is in sats, so you need multiply the btc amount by 100,000,000
+--commit-scriptpk, --commit-spend, --commit-refund can be found by searching your txid at https://mempool.space, please see screenshots below
+### ATTENTION: --commit-spend, --commit-refund is in sats, so you need multiply the btc amount by 100,000,000
 
-![Find commit tx in mempool space](/assets/images/tx-detail.png "Transaction Detail")
+For --commit-scriptpk:
+![Transaction Overview](/assets/images/tx-overview.png "Transaction Overview")
+
+For --commit-spend and --commit-refund:
+![Transaction Details](/assets/images/tx-details.png "Transaction Details")
 
 ### Warning
 The Rust mining engine is not fully tested; use at your own risk.

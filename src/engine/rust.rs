@@ -41,9 +41,10 @@ pub async fn run(
 	commit_nonce: u64,
 	commit_txid: &str,
 	commit_scriptpk: &str,
+	commit_spend: u64,
 	commit_refund: u64,
 ) -> Result<()> {
-	let m = MinerBuilder { network, electrumx, wallet_dir, ticker, max_fee, commit_time, commit_nonce, commit_txid, commit_scriptpk, commit_refund }.build()?;
+	let m = MinerBuilder { network, electrumx, wallet_dir, ticker, max_fee, commit_time, commit_nonce, commit_txid, commit_scriptpk, commit_spend, commit_refund }.build()?;
 
 	#[allow(clippy::never_loop)]
 	loop {
@@ -67,6 +68,7 @@ struct Miner {
 	commit_nonce: u64,
 	commit_txid: String,
 	commit_scriptpk: String,
+	commit_spend: u64,
 	commit_refund: u64,
 }
 impl Miner {
@@ -97,7 +99,7 @@ impl Miner {
 			additional_outputs,
 			reveal_script,
 			reveal_spend_info,
-			fees,
+			fees: _,
 			funding_utxo: _,
 		} = d.clone();
 		let reveal_spk = ScriptBuf::new_p2tr(
@@ -108,7 +110,8 @@ impl Miner {
 		let funding_spk = wallet.funding.address.script_pubkey();
 		let commit_output = {
 			let spend = TxOut {
-				value: Amount::from_sat(fees.reveal_and_outputs),
+				// value: Amount::from_sat(fees.reveal_and_outputs),
+				value: Amount::from_sat(self.commit_spend),
 				script_pubkey: reveal_spk.clone(),
 			};
 			let refund = {
@@ -525,6 +528,7 @@ struct MinerBuilder<'a> {
 	commit_nonce: u64,
 	commit_txid: &'a str,
 	commit_scriptpk: &'a str,
+	commit_spend: u64,
 	commit_refund: u64,
 }
 impl<'a> MinerBuilder<'a> {
@@ -546,6 +550,7 @@ impl<'a> MinerBuilder<'a> {
 			commit_nonce: self.commit_nonce,
 			commit_txid: self.commit_txid.into(),
 			commit_scriptpk: self.commit_scriptpk.into(),
+			commit_spend: self.commit_spend,
 			commit_refund: self.commit_refund,
 		})
 	}

@@ -76,7 +76,7 @@ Options:
 
 ## Where to find above argument values?
 
---commit-time, --commit-nonce, --commit-txid please see console output
+--commit-time, --commit-nonce, --commit-txid please see console output, just looking for the line containing some pattern like ```payload time: (number)  payload nonce: (number)```.
 --commit-scriptpk, --commit-spend, --commit-refund can be found by searching your txid at https://mempool.space, please see screenshots below
 ### ATTENTION: --commit-spend, --commit-refund is in sats, so you need multiply the btc amount by 100,000,000
 

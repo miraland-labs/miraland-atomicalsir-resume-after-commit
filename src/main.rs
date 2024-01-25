@@ -1,4 +1,5 @@
 #![deny(missing_docs, unused_crate_dependencies)]
+#![feature(let_chains)]
 
 //! Atomicals mining manager.
 

@@ -1,8 +1,5 @@
 // std
-use std::{
-	future::Future,
-	time::Duration,
-};
+use std::{future::Future, time::Duration};
 // crates.io
 use bitcoin::{
 	opcodes::{

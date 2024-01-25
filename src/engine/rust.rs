@@ -20,7 +20,7 @@ use bitcoin::{
 	taproot::{LeafVersion, Signature, TaprootBuilder, TaprootSpendInfo},
 	transaction::Version,
 	Address, Amount, Network, OutPoint, Psbt, ScriptBuf, Sequence, TapSighashType, Transaction,
-	TxIn, TxOut, Witness, Txid,
+	TxIn, TxOut, Txid, Witness,
 };
 use serde::Serialize;
 // atomicalsir
@@ -44,7 +44,20 @@ pub async fn run(
 	commit_spend: u64,
 	commit_refund: u64,
 ) -> Result<()> {
-	let m = MinerBuilder { network, electrumx, wallet_dir, ticker, max_fee, commit_time, commit_nonce, commit_txid, commit_scriptpk, commit_spend, commit_refund }.build()?;
+	let m = MinerBuilder {
+		network,
+		electrumx,
+		wallet_dir,
+		ticker,
+		max_fee,
+		commit_time,
+		commit_nonce,
+		commit_txid,
+		commit_scriptpk,
+		commit_spend,
+		commit_refund,
+	}
+	.build()?;
 
 	#[allow(clippy::never_loop)]
 	loop {
@@ -101,6 +114,7 @@ impl Miner {
 			reveal_spend_info,
 			fees: _,
 			funding_utxo: _,
+			refund_commit_upon_max_mint,
 		} = d.clone();
 		let reveal_spk = ScriptBuf::new_p2tr(
 			&secp,
@@ -134,8 +148,8 @@ impl Miner {
 		// TODO: Move common code to a single function.
 		let reveal_hty = TapSighashType::SinglePlusAnyoneCanPay;
 		let reveal_lh = reveal_script.tapscript_leaf_hash();
-		let reveal_tx = if let Some(bitworkr) = bitworkr {
-			// exists bitworkr
+		let reveal_tx = if let Some(bitworkr) = bitworkr && !refund_commit_upon_max_mint {
+			// exists bitworkr && normal reveal after commit
 			tracing::info!("\nStarting reveal stage mining now...\n");
 			tracing::info!("Concurrency set to: {concurrency}");
 			let psbt = Psbt::from_unsigned_tx(Transaction {
@@ -290,7 +304,7 @@ impl Miner {
 
 			tx
 		} else {
-			// No bitworkr
+			// No bitworkr or refund from commit to original funding due to max mint reached 
 			let mut psbt = Psbt::from_unsigned_tx(Transaction {
 				version: Version::ONE,
 				lock_time: LockTime::ZERO,
@@ -374,6 +388,7 @@ impl Miner {
 		let response = self.api.get_ft_info(id).await?;
 		let global = response.global.unwrap();
 		let ft = response.result;
+		let mut refund_commit_upon_max_mint = false;
 
 		if ft.ticker != self.ticker {
 			Err(anyhow::anyhow!("ticker mismatch"))?;
@@ -388,7 +403,11 @@ impl Miner {
 			Err(anyhow::anyhow!("mint amount mismatch"))?;
 		}
 		if ft.dft_info.mint_count >= ft.max_mints {
-			Err(anyhow::anyhow!("max mints reached"))?;
+			// Err(anyhow::anyhow!("max mints reached"))?;
+			refund_commit_upon_max_mint = true;
+			tracing::info!(
+				"Max mints reached. Trying to refund once the previous commit is verified."
+			);
 		}
 
 		let secp = Secp256k1::new();
@@ -399,7 +418,12 @@ impl Miner {
 		};
 		let additional_outputs = vec![TxOut {
 			value: Amount::from_sat(ft.mint_amount),
-			script_pubkey: wallet.stash.address.script_pubkey(),
+			// script_pubkey: wallet.stash.address.script_pubkey(),
+			script_pubkey: if refund_commit_upon_max_mint {
+				wallet.funding.address.script_pubkey()
+			} else {
+				wallet.stash.address.script_pubkey()
+			},
 		}];
 
 		let reveal_script: ScriptBuf;
@@ -409,25 +433,29 @@ impl Miner {
 		// let mut nonce: u64 = 10_000_000;
 		let nonce: u64;
 		loop {
-			let payload = PayloadWrapper {
-				args: {
-					let time: u64 = self.commit_time;
-					// nonce -= 1;
-					nonce = self.commit_nonce;
+			let payload =
+				PayloadWrapper {
+					args: {
+						let time: u64 = self.commit_time;
+						// nonce -= 1;
+						nonce = self.commit_nonce;
 
-					tracing::info!("input commit payload time: {time}, input commit payload nonce: {nonce}");
+						tracing::info!("input commit payload time: {time}, input commit payload nonce: {nonce}");
 
-					Payload {
-						bitworkc: ft.mint_bitworkc.clone(),
-						mint_ticker: ft.ticker.clone(),
-						nonce,
-						time,
-					}
-				},
-			};
+						Payload {
+							bitworkc: ft.mint_bitworkc.clone(),
+							mint_ticker: ft.ticker.clone(),
+							nonce,
+							time,
+						}
+					},
+				};
 			let payload_encoded = util::cbor(&payload)?;
-			let reveal_script_ =
-				util::build_reval_script(&wallet.funding.x_only_public_key, "dmt", &payload_encoded);
+			let reveal_script_ = util::build_reval_script(
+				&wallet.funding.x_only_public_key,
+				"dmt",
+				&payload_encoded,
+			);
 			let reveal_spend_info_ = TaprootBuilder::new()
 				.add_leaf(0, reveal_script_.clone())?
 				.finalize(&secp, wallet.funding.x_only_public_key)
@@ -438,9 +466,17 @@ impl Miner {
 				reveal_spend_info_.merkle_root(),
 			);
 
-			assert_eq!(reveal_spk.to_hex_string(), self.commit_scriptpk.clone(), "we are expecting both values are same.");
+			assert_eq!(
+				reveal_spk.to_hex_string(),
+				self.commit_scriptpk.clone(),
+				"we are expecting both values are same."
+			);
 
-			tracing::info!("The previous commit verified successfully with time: {}, nonce: {}", payload.args.time, payload.args.nonce);
+			tracing::info!(
+				"The previous commit verified successfully with time: {}, nonce: {}",
+				payload.args.time,
+				payload.args.nonce
+			);
 			reveal_script = reveal_script_;
 			reveal_spend_info = reveal_spend_info_;
 
@@ -469,6 +505,7 @@ impl Miner {
 			reveal_spend_info,
 			fees,
 			funding_utxo,
+			refund_commit_upon_max_mint,
 		})
 	}
 
@@ -614,6 +651,7 @@ struct Data {
 	reveal_spend_info: TaprootSpendInfo,
 	fees: Fees,
 	funding_utxo: Utxo,
+	refund_commit_upon_max_mint: bool,
 }
 #[allow(dead_code)]
 #[derive(Clone, Debug)]

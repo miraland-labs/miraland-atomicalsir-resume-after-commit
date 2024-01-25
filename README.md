@@ -10,7 +10,7 @@
 
 ## Usage
 ```
-Miraland Atomicalsir Tool for Resuming after Commit Succeeded but Reveal Failed (based on atomicalsir)
+Miraland Atomicalsir Tool for Resuming after Commit Succeeded but Reveal Failed (based on atomicalsir).
 
 Usage: miraland-atomicalsir-resume-after-commit [OPTIONS] --ticker <NAME> <--rust-engine <RUST_ENGINE>|--js-engine <PATH>> --commit-time <COMMIT_TIMESTAMP> --commit-nonce <COMMIT_NONCE> --commit-txid <COMMIT_TXID> --commit-scriptpk <COMMIT_SCRIPT_PUBKEY> --commit-spend <COMMIT_SPEND_SATS> --commit-refund <COMMIT_REFUND_SATS>
 
@@ -73,6 +73,8 @@ Options:
   -V, --version
           Print version
 ```
+
+Special consideration: Once max mints has been reached, the reveal will not be possible, the mint amount will be refunded to your original funding wallet with the exception of the transaction fee paid to the miners as scheduled.
 
 ## Where to find above argument values?
 

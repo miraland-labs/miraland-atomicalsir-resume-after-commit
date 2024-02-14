@@ -73,7 +73,8 @@ fn cbor_should_work() {
 	assert_eq!(
 		cbor(&PayloadWrapper {
 			args: Payload {
-				bitworkc: "aabbcc".into(),
+				bitworkc: Some("aabbcc".into()),
+				bitworkr: None,
 				mint_ticker: "quark".into(),
 				nonce: 9999999,
 				time: 1704057427
@@ -144,7 +145,8 @@ fn build_reval_script_should_work() {
 				"dmt",
 				&cbor(&PayloadWrapper {
 					args: Payload {
-						bitworkc: "aabbcc".into(),
+						bitworkc: Some("aabbcc".into()),
+						bitworkr: None,
 						mint_ticker: "quark".into(),
 						nonce: 9999999,
 						time: 1704057427

@@ -37,12 +37,14 @@ pub async fn run(
 	wallet_dir: &Path,
 	ticker: &str,
 	max_fee: u64,
+	current: bool,
 	commit_time: u64,
 	commit_nonce: u64,
 	commit_txid: &str,
 	commit_scriptpk: &str,
 	commit_spend: u64,
 	commit_refund: u64,
+	commit_bitworkc: Option<String>,
 ) -> Result<()> {
 	let m = MinerBuilder {
 		network,
@@ -50,12 +52,14 @@ pub async fn run(
 		wallet_dir,
 		ticker,
 		max_fee,
+		current,
 		commit_time,
 		commit_nonce,
 		commit_txid,
 		commit_scriptpk,
 		commit_spend,
 		commit_refund,
+		commit_bitworkc,
 	}
 	.build()?;
 
@@ -77,12 +81,14 @@ struct Miner {
 	wallets: Vec<Wallet>,
 	ticker: String,
 	max_fee: u64,
+	current: bool,
 	commit_time: u64,
 	commit_nonce: u64,
 	commit_txid: String,
 	commit_scriptpk: String,
 	commit_spend: u64,
 	commit_refund: u64,
+	commit_bitworkc: Option<String>,
 }
 impl Miner {
 	const BASE_BYTES: f64 = 10.5;
@@ -404,10 +410,12 @@ impl Miner {
 		}
 		if ft.dft_info.mint_count >= ft.max_mints {
 			// Err(anyhow::anyhow!("max mints reached"))?;
-			refund_commit_upon_max_mint = true;
-			tracing::info!(
-				"Max mints reached. Trying to refund once the previous commit is verified."
-			);
+			if ft.mint_mode == "fixed" {
+			    refund_commit_upon_max_mint = true;
+			    tracing::info!(
+				    "Max mints reached. Trying to refund once the previous commit is verified."
+			    );
+			}
 		}
 
 		let secp = Secp256k1::new();
@@ -429,6 +437,30 @@ impl Miner {
 		let reveal_script: ScriptBuf;
 		let reveal_spend_info: TaprootSpendInfo;
 
+		// MI: as atomicals will support perpetual/infinite dft-mode starting from height 828128
+		// ft.mint_bitworkc is not a non-empty field anymore in perpetual/infinite mode, we need consider about
+		// mint_bitworkc_current and/or mint_bitworkc_next
+		// ATTENTION: Under perpetual/infinite mode, the recovery may not work if one resume a failed tx once mining 
+		// enters next-round, because mint_bitworkc_current and mint_bitworkc_next values changed
+		let bitworkc = if ft.mint_bitworkc.is_some() {
+			// same as legacy fixed supply mode
+			ft.mint_bitworkc.clone()
+		} else if self.current {
+			// perpetual/infinite, use current value
+			ft.dft_info.mint_bitworkc_current.clone()
+		} else {
+			// perpetual/infinite, use next value by default
+			ft.dft_info.mint_bitworkc_next.clone()
+		};
+
+		let bitworkr = if ft.mint_bitworkr.is_some() {
+			ft.mint_bitworkr.clone()
+		} else if self.current {
+			ft.dft_info.mint_bitworkr_current.clone()
+		} else {
+			ft.dft_info.mint_bitworkr_next.clone()
+		};
+
 		// loop is for future purpose only.
 		// let mut nonce: u64 = 10_000_000;
 		let nonce: u64;
@@ -441,9 +473,22 @@ impl Miner {
 						nonce = self.commit_nonce;
 
 						tracing::info!("input commit payload time: {time}, input commit payload nonce: {nonce}");
+						if ft.mint_mode == "perpetual" || ft.mint_mode == "infinite" {
+							if let Some(c) = self.commit_bitworkc.clone() {
+								tracing::info!("input commit payload bitworkc: {c}");
+								if c.as_str() != bitworkc.as_ref().unwrap().as_str() {
+									tracing::info!("input commit payload bitworkc: {c} NOT EQUAL to latest bitworkc: {}, minting has entered into a new round, privious commit tx cannot be resumed any more. Trying to refund once the previous commit is verified.", bitworkc.clone().unwrap());
+									refund_commit_upon_max_mint = true;
+								}
+							} else {
+								tracing::info!("No bitworkc input, try to use latest bitworkc");
+							}
+						}
 
 						Payload {
-							bitworkc: ft.mint_bitworkc.clone(),
+							// bitworkc: ft.mint_bitworkc.clone(),
+							bitworkc: bitworkc.clone(),
+							bitworkr: bitworkr.clone(),
 							mint_ticker: ft.ticker.clone(),
 							nonce,
 							time,
@@ -483,7 +528,8 @@ impl Miner {
 			break ();
 		}
 
-		let perform_bitworkr = if ft.mint_bitworkr.is_some() { true } else { false };
+		// let perform_bitworkr = if ft.mint_bitworkr.is_some() { true } else { false };
+		let perform_bitworkr = if bitworkr.is_some() { true } else { false };
 		let fees = Self::fees_of(
 			satsbyte,
 			reveal_script.as_bytes().len(),
@@ -498,8 +544,10 @@ impl Miner {
 		Ok(Data {
 			secp,
 			satsbyte,
-			bitworkc: ft.mint_bitworkc,
-			bitworkr: ft.mint_bitworkr,
+			// bitworkc: ft.mint_bitworkc,
+			// bitworkr: ft.mint_bitworkr,
+			bitworkc,
+			bitworkr,
 			additional_outputs,
 			reveal_script,
 			reveal_spend_info,
@@ -561,12 +609,14 @@ struct MinerBuilder<'a> {
 	wallet_dir: &'a Path,
 	ticker: &'a str,
 	max_fee: u64,
+	current: bool,
 	commit_time: u64,
 	commit_nonce: u64,
 	commit_txid: &'a str,
 	commit_scriptpk: &'a str,
 	commit_spend: u64,
 	commit_refund: u64,
+	commit_bitworkc: Option<String>,
 }
 impl<'a> MinerBuilder<'a> {
 	fn build(self) -> Result<Miner> {
@@ -583,12 +633,14 @@ impl<'a> MinerBuilder<'a> {
 			wallets,
 			ticker: self.ticker.into(),
 			max_fee: self.max_fee,
+			current: self.current,
 			commit_time: self.commit_time,
 			commit_nonce: self.commit_nonce,
 			commit_txid: self.commit_txid.into(),
 			commit_scriptpk: self.commit_scriptpk.into(),
 			commit_spend: self.commit_spend,
 			commit_refund: self.commit_refund,
+			commit_bitworkc: self.commit_bitworkc,
 		})
 	}
 }
@@ -633,7 +685,8 @@ pub struct PayloadWrapper {
 }
 #[derive(Debug, Serialize)]
 pub struct Payload {
-	pub bitworkc: String,
+	pub bitworkc: Option<String>,
+	pub bitworkr: Option<String>,
 	pub mint_ticker: String,
 	pub nonce: u64,
 	pub time: u64,
@@ -644,7 +697,7 @@ pub struct Payload {
 struct Data {
 	secp: Secp256k1<All>,
 	satsbyte: u64,
-	bitworkc: String,
+	bitworkc: Option<String>,
 	bitworkr: Option<String>,
 	additional_outputs: Vec<TxOut>,
 	reveal_script: ScriptBuf,

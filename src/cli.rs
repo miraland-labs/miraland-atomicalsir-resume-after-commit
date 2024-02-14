@@ -60,6 +60,9 @@ pub struct Cli {
 	/// Ticker of the network to mine on.
 	#[arg(long, value_name = "NAME")]
 	ticker: String,
+	/// Mine with the current actual bitwork otherwise use the next by default.
+	#[arg(long, value_name = "CURRENT")]
+	current: bool,
 	/// Previous commit payload unix timestamp.
 	#[arg(long, value_name = "COMMIT_TIMESTAMP")]
 	commit_time: u64,
@@ -78,6 +81,9 @@ pub struct Cli {
 	/// Previous commit output refund(in sats, 1 btc = 100,000,000 sats).
 	#[arg(long, value_name = "COMMIT_REFUND")]
 	commit_refund: u64,
+	/// Previous commit bitworkc, used under perpetual/infinite mint mode
+	#[arg(long, value_name = "COMMIT_BITWORKC")]
+	commit_bitworkc: Option<String>,
 }
 impl Cli {
 	pub async fn run(self) -> Result<()> {
@@ -88,12 +94,14 @@ impl Cli {
 			max_fee,
 			electrumx,
 			ticker,
+			current,
 			commit_time,
 			commit_nonce,
 			commit_txid,
 			commit_scriptpk,
 			commit_spend,
 			commit_refund,
+			commit_bitworkc,
 		} = self;
 		let ticker = ticker.to_lowercase();
 
@@ -106,12 +114,14 @@ impl Cli {
 				&d,
 				&ticker,
 				max_fee,
+				current,
 				commit_time,
 				commit_nonce,
 				&commit_txid,
 				&commit_scriptpk,
 				commit_spend,
 				commit_refund,
+				commit_bitworkc,
 			)
 			.await?;
 		}

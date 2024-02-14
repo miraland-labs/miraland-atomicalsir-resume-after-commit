@@ -67,6 +67,9 @@ Options:
       --commit-refund <COMMIT_REFUND>
           Previous commit output refund(in sats, 1 btc = 100,000,000 sats)
 
+      --commit-bitworkc <COMMINT_BITWORKC>
+          Optional, previous commit bitworkc, used in perpetual/infinite mint mode.
+
   -h, --help
           Print help (see a summary with '-h')
 
@@ -74,11 +77,16 @@ Options:
           Print version
 ```
 
-Special consideration: Once max mints has been reached, the reveal will not be possible, the mint amount will be refunded to your original funding wallet with the exception of the transaction fee paid to the miners as scheduled.
+Special consideration [1]: In ```fixed``` mint mode, once max mints has been reached, the reveal will not be possible, the mint amount will be refunded to your original funding wallet, with the exception of the transaction fee, which will be paid to the miners as scheduled.
+
+Special consideration [2]: In ```perpetual``` or ```infinite``` mint mode, if you resume a failed transaction after mining has entered the next round, resuming may not work because mint_bitworkc_current and mint_bitworkc_next values have changed. In this situation, refund will be the next action.
 
 ## Where to find above argument values?
 
---commit-time, --commit-nonce, --commit-txid please see console output, just looking for the line containing some pattern like ```payload time: (number)  payload nonce: (number)```.
+--commit-time, --commit-nonce, please see console output, just looking for the line containing some pattern like ```payload time: (number)  payload nonce: (number)```.
+
+--commit-txid, please search and find ```commit txid``` or ```commit tx``` in console log.
+
 --commit-scriptpk, --commit-spend, --commit-refund can be found by searching your txid at https://mempool.space, please see screenshots below
 ### ATTENTION: --commit-spend, --commit-refund is in sats, so you need multiply the btc amount by 100,000,000
 
@@ -87,6 +95,8 @@ For --commit-scriptpk:
 
 For --commit-spend and --commit-refund:
 ![Transaction Details](/assets/images/tx-details.png "Transaction Details")
+
+For --commit-bitworkc, please search and find ```payload bitworkc``` in console log if mint mode is ```perpetual``` or ```infinite```
 
 ### Warning
 The Rust mining engine is not fully tested; use at your own risk.
